@@ -399,10 +399,13 @@ inline int Difftest::check_all() {
   num_commit = 0; // reset num_commit this cycle to 0
   if (dut->event.valid) {
     // interrupt has a higher priority than exception
-    dut->event.interrupt ? do_interrupt() : do_exception();
-    dut->event.valid = 0;
-    dut->commit[0].valid = 0;
-  } else {
+    for (int i = 0; i < CONFIG_DIFF_COMMIT_WIDTH; i++) {
+      if (dut->commit[i].pc == dut->event.exceptionPC)
+        dut->commit[i].valid = 0;
+    }
+  }
+
+  {
 #if !defined(BASIC_DIFFTEST_ONLY) && !defined(CONFIG_DIFFTEST_SQUASH)
     if (dut->commit[0].valid) {
       dut_commit_first_pc = dut->commit[0].pc;
@@ -427,6 +430,12 @@ inline int Difftest::check_all() {
         num_commit += 1 + dut->commit[i].nFused;
       }
     }
+  }
+
+  if (dut->event.valid) {
+    // interrupt has a higher priority than exception
+    dut->event.interrupt ? do_interrupt() : do_exception();
+    dut->event.valid = 0;
   }
 
   if (update_delayed_writeback()) {
