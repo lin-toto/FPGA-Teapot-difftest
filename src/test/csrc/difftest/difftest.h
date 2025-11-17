@@ -397,46 +397,38 @@ protected:
   int do_l2tlb_check();
   int do_golden_memory_update();
 
+  inline uint64_t get_int_data(int i) {
+#if defined(CONFIG_DIFFTEST_PHYINTREGSTATE)
+    return dut->pregs_int.value[dut->commit[i].wpdest];
+#elif defined(CONFIG_DIFFTEST_INTWRITEBACK)
+    return dut->wb_int[dut->commit[i].wpdest].data;
+#else
+    return dut->regs_int.value[dut->commit[i].wdest];
+#endif
+  }
+
+#ifdef CONFIG_DIFFTEST_ARCHFPREGSTATE
+  inline uint64_t get_fp_data(int i) {
+#if defined(CONFIG_DIFFTEST_PHYFPREGSTATE)
+    return dut->pregs_fp.value[dut->commit[i].wpdest];
+#elif defined(CONFIG_DIFFTEST_FPWRITEBACK)
+    return dut->wb_fp[dut->commit[i].wpdest].data;
+#else
+    return dut->regs_fp.value[dut->commit[i].wdest];
+#endif
+  }
+#endif
+
   inline uint64_t get_commit_data(int i) {
-#ifdef CONFIG_DIFFTEST_COMMITDATA
+#if defined(CONFIG_DIFFTEST_COMMITDATA)
     return dut->commit_data[i].data;
 #else
 #ifdef CONFIG_DIFFTEST_ARCHFPREGSTATE
     if (dut->commit[i].fpwen) {
-      return
-#ifdef CONFIG_DIFFTEST_FPWRITEBACK
-          dut->wb_fp[dut->commit[i].wpdest].data;
-#else
-          dut->regs_fp.value[dut->commit[i].wdest];
-#endif // CONFIG_DIFFTEST_FPWRITEBACK
+      return get_fp_data(i);
     } else
 #endif // CONFIG_DIFFTEST_ARCHFPREGSTATE
-#ifdef CONFIG_DIFFTEST_ARCHVECREGSTATE
-        if (dut->commit[i].vecwen) {
-      return
-#ifdef CONFIG_DIFFTEST_VECWRITEBACK
-          dut->wb_vec[dut->commit[i].wpdest].data[0];
-#else
-          dut->regs_vec.value[dut->commit[i].wdest];
-#endif // CONFIG_DIFFTEST_VECWRITEBACK
-    } else
-#endif // CONFIG_DIFFTEST_ARCHFPREGSTATE
-#ifdef CONFIG_DIFFTEST_ARCHVECREGSTATE
-        if (dut->commit[i].v0wen) {
-      return
-#ifdef CONFIG_DIFFTEST_VECWRITEBACK
-          dut->wb_v0[dut->commit[i].wpdest].data[0];
-#else
-          dut->regs_vec.value[dut->commit[i].wdest];
-#endif // CONFIG_DIFFTEST_VECWRITEBACK
-    } else
-#endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
-      return
-#ifdef CONFIG_DIFFTEST_INTWRITEBACK
-          dut->wb_int[dut->commit[i].wpdest].data;
-#else
-        dut->regs_int.value[dut->commit[i].wdest];
-#endif // CONFIG_DIFFTEST_INTWRITEBACK
+      return get_int_data(i);
 #endif // CONFIG_DIFFTEST_COMMITDATA
   }
   inline bool has_wfi() {

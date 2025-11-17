@@ -47,6 +47,7 @@ case class GatewayConfig(
   traceDump: Boolean = false,
   traceLoad: Boolean = false,
   hierarchicalWiring: Boolean = false,
+  softArchUpdate: Boolean = false,
   isFPGA: Boolean = false,
   isGSIM: Boolean = false,
 ) {
@@ -62,8 +63,8 @@ case class GatewayConfig(
   def hasDeferredResult: Boolean = isNonBlock || hasInternalStep
   def needTraceInfo: Boolean = hasReplay
   def needEndpoint: Boolean =
-    hasGlobalEnable || hasDutZone || isBatch || isSquash || hierarchicalWiring || traceDump || traceLoad
-  def needPreprocess: Boolean = hasDutZone || isBatch || isSquash || needTraceInfo
+    hasGlobalEnable || hasDutZone || isBatch || isSquash || hierarchicalWiring || traceDump || traceLoad || needPreprocess
+  def needPreprocess: Boolean = hasDutZone || isBatch || isSquash || needTraceInfo || !softArchUpdate
   def useDPICtype: Boolean = !isFPGA && !isGSIM
   // Macros Generation for Cpp and Verilog
   def cppMacros: Seq[String] = {
@@ -161,6 +162,7 @@ object Gateway {
       case 'H' => config = config.copy(hierarchicalWiring = true)
       case 'F' => config = config.copy(isFPGA = true)
       case 'G' => config = config.copy(isGSIM = true)
+      case 'U' => config = config.copy(softArchUpdate = true)
       case x   => println(s"Unknown Gateway Config $x")
     }
     config.check()
@@ -180,6 +182,15 @@ object Gateway {
     }
     instanceWithDelay += ((gen, delay))
     bundle
+  }
+
+  def getInstance(bundles: Seq[DifftestBundle]): Seq[DifftestBundle] = {
+    val archRegs = if (!bundles.exists(_.desiredCppName == "regs_int")) {
+      Preprocess.getArchRegs(bundles, false)
+    } else {
+      Seq.empty
+    }
+    bundles ++ archRegs
   }
 
   def collect(): GatewayResult = {
@@ -204,7 +215,7 @@ object Gateway {
         fpgaIO = endpoint.fpgaIO,
       )
     } else {
-      GatewayResult(instances = instances) + GatewaySink.collect(config)
+      GatewayResult(instances = getInstance(instances)) + GatewaySink.collect(config, getInstance(instances))
     }
     sink + GatewayResult(
       cppMacros = config.cppMacros,
@@ -229,7 +240,7 @@ class GatewayEndpoint(instanceWithDelay: Seq[(DifftestBundle, Int)], config: Gat
   }
 
   val preprocessed = if (config.needPreprocess) {
-    WireInit(Preprocess(bundle))
+    WireInit(Preprocess(bundle, config))
   } else {
     WireInit(bundle)
   }
@@ -247,7 +258,7 @@ class GatewayEndpoint(instanceWithDelay: Seq[(DifftestBundle, Int)], config: Gat
   } else {
     WireInit(validated)
   }
-  val instances = chiselTypeOf(squashed).map(_.bits).toSeq
+  val instances = Gateway.getInstance(chiselTypeOf(squashed).map(_.bits).toSeq)
   val deltas = if (config.isDelta) {
     WireInit(Delta(squashed, config))
   } else {
@@ -284,7 +295,7 @@ class GatewayEndpoint(instanceWithDelay: Seq[(DifftestBundle, Int)], config: Gat
     }
   }
 
-  GatewaySink.collect(config)
+  GatewaySink.collect(config, instances)
 
 }
 
@@ -303,10 +314,10 @@ object GatewaySink {
     }
   }
 
-  def collect(config: GatewayConfig): GatewayResult = {
+  def collect(config: GatewayConfig, instances: Seq[DifftestBundle]): GatewayResult = {
     config.style match {
-      case "dpic" => DPIC.collect(config)
-      case _      => DPIC.collect(config) // Default: DPI-C
+      case "dpic" => DPIC.collect(config, instances)
+      case _      => DPIC.collect(config, instances) // Default: DPI-C
     }
   }
 }

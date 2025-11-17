@@ -389,7 +389,7 @@ object DPIC {
     deltaInstances ++= template.filter(_.supportsDelta)
   }
 
-  def collect(config: GatewayConfig): GatewayResult = {
+  def collect(config: GatewayConfig, instances: Seq[DifftestBundle]): GatewayResult = {
     if (interfaces.isEmpty) {
       return GatewayResult()
     }
@@ -408,37 +408,54 @@ object DPIC {
       Delta.collect()
       interfaceCpp += "#include \"difftest-delta.h\""
     }
+    val phyRegs = instances.distinctBy(_.desiredCppName).filter(_.desiredCppName.contains("pregs"))
+    if (phyRegs.nonEmpty) {
+      interfaceCpp += "void diffstate_update_archreg(DiffTestState* dut) {"
+      phyRegs.foreach { p =>
+        val suffix = p.desiredCppName.replace("pregs_", "")
+        val (regName, pregName, ratName) = (s"regs_$suffix", s"pregs_$suffix", s"rat_$suffix")
+        val regSize = instances.find(_.desiredCppName == regName).get.bits.asInstanceOf[ArchRegState].numRegs
+        val index = if (instances.exists(_.desiredCppName == ratName)) {
+          s"dut->$ratName.value[i]"
+        } else {
+          "i"
+        }
+        interfaceCpp += s"  for (int i = 0; i < $regSize; i++) { dut->$regName.value[i] = dut->$pregName.value[$index]; }"
+      }
+      interfaceCpp += "}"
+    }
     interfaceCpp += ""
     interfaceCpp +=
-      """
-        |class DPICBuffer : public DiffStateBuffer {
-        |private:
-        |  DiffTestState buffer[CONFIG_DIFFTEST_ZONESIZE][CONFIG_DIFFTEST_BUFLEN];
-        |  int read_ptr = 0;
-        |  int zone_ptr = 0;
-        |  bool init = true;
-        |public:
-        |  DPICBuffer() {
-        |    memset(buffer, 0, sizeof(buffer));
-        |  }
-        |  inline DiffTestState* get(int zone, int index) {
-        |    return buffer[zone] + index;
-        |  }
-        |  inline DiffTestState* next() {
-        |    DiffTestState* ret = buffer[zone_ptr] + read_ptr;
-        |    read_ptr = (read_ptr + 1) % CONFIG_DIFFTEST_BUFLEN;
-        |    return ret;
-        |  }
-        |  inline void switch_zone() {
-        |    if (init) {
-        |      init = false;
-        |      return;
-        |    }
-        |    zone_ptr = (zone_ptr + 1) % CONFIG_DIFFTEST_ZONESIZE;
-        |    read_ptr = 0;
-        |  }
-        |};
-        |""".stripMargin
+      s"""
+         |class DPICBuffer : public DiffStateBuffer {
+         |private:
+         |  DiffTestState buffer[CONFIG_DIFFTEST_ZONESIZE][CONFIG_DIFFTEST_BUFLEN];
+         |  int read_ptr = 0;
+         |  int zone_ptr = 0;
+         |  bool init = true;
+         |public:
+         |  DPICBuffer() {
+         |    memset(buffer, 0, sizeof(buffer));
+         |  }
+         |  inline DiffTestState* get(int zone, int index) {
+         |    return buffer[zone] + index;
+         |  }
+         |  inline DiffTestState* next() {
+         |    DiffTestState* ret = buffer[zone_ptr] + read_ptr;
+         |    ${if (phyRegs.nonEmpty) "diffstate_update_archreg(ret);" else ""}
+         |    read_ptr = (read_ptr + 1) % CONFIG_DIFFTEST_BUFLEN;
+         |    return ret;
+         |  }
+         |  inline void switch_zone() {
+         |    if (init) {
+         |      init = false;
+         |      return;
+         |    }
+         |    zone_ptr = (zone_ptr + 1) % CONFIG_DIFFTEST_ZONESIZE;
+         |    read_ptr = 0;
+         |  }
+         |};
+         |""".stripMargin
 
     interfaceCpp += interfaces.map(_._2 + ";").mkString("\n")
     interfaceCpp += ""
