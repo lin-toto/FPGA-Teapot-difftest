@@ -314,6 +314,11 @@ class DiffIntWriteback(numRegs: Int = 32) extends DataWriteback(numRegs) with Di
   override def classArgs: Map[String, Any] = Map("numRegs" -> numRegs)
 }
 
+class DiffDIFTWriteback(numRegs: Int = 32) extends DiffIntWriteback(numRegs) {
+  override val data = UInt(8.W)
+  override val desiredCppName: String = "wb_dift"
+}
+
 class DiffFpWriteback(numRegs: Int = 32) extends DiffIntWriteback(numRegs) {
   override val desiredCppName: String = "wb_fp"
 }
@@ -334,6 +339,12 @@ class DiffArchIntRegState extends ArchIntRegState with DifftestBundle {
   override val desiredOffset: Int = 0
   override val updateDependency: Seq[String] = Seq("commit", "event")
   override val supportsDelta: Boolean = true
+}
+
+class DiffArchDIFTRegState extends DiffArchIntRegState {
+  override val value = Vec(numRegs, UInt(8.W))
+  override val desiredCppName: String = "regs_dift"
+  override val desiredOffset: Int = 1
 }
 
 abstract class DiffArchDelayedUpdate(numRegs: Int)

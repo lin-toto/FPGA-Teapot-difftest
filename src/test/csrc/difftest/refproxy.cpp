@@ -165,6 +165,7 @@ void RefProxy::regcpy(DiffTestState *dut) {
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
   memcpy(&triggercsr, &dut->triggercsr, sizeof(triggercsr));
 #endif //CONFIG_DIFFTEST_TRIGGERCSRSTATE
+  memcpy(&regs_dift, dut->regs_dift.value, 32 * sizeof(uint8_t));
   ref_regcpy(&regs_int, DUT_TO_REF, false);
 };
 
@@ -190,8 +191,8 @@ int RefProxy::compare(DiffTestState *dut) {
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
                          PROXY_COMPARE(triggercsr),
 #endif // CONFIG_DIFFTEST_TRIGGERCSRSTATE
-                         PROXY_COMPARE(csr)
-
+                         PROXY_COMPARE(csr),
+                         PROXY_COMPARE(regs_dift)
   };
   for (int i = 0; i < sizeof(results) / sizeof(int); i++) {
     if (results[i]) {
@@ -211,11 +212,11 @@ int RefProxy::compare(DiffTestState *dut) {
 
 void RefProxy::display(DiffTestState *dut) {
   if (dut) {
-#define PROXY_COMPARE_AND_DISPLAY(field, field_names)                     \
+#define PROXY_COMPARE_AND_DISPLAY(field, field_names, size)               \
   do {                                                                    \
-    uint64_t *_ptr_dut = (uint64_t *)(&((dut)->field));                   \
-    uint64_t *_ptr_ref = (uint64_t *)(&(field));                          \
-    for (int i = 0; i < sizeof(field) / sizeof(uint64_t); i++) {          \
+    size *_ptr_dut = (size *)(&((dut)->field));                   \
+    size *_ptr_ref = (size *)(&(field));                          \
+    for (int i = 0; i < sizeof(field) / sizeof(size); i++) {              \
       if (_ptr_dut[i] != _ptr_ref[i]) {                                   \
         Info(                                                             \
             "%7s different at pc = 0x%010lx, right= 0x%016lx, "           \
@@ -225,26 +226,27 @@ void RefProxy::display(DiffTestState *dut) {
     }                                                                     \
   } while (0);
 
-    PROXY_COMPARE_AND_DISPLAY(regs_int, regs_name_int)
+    PROXY_COMPARE_AND_DISPLAY(regs_int, regs_name_int, uint64_t)
 #ifdef CONFIG_DIFFTEST_ARCHFPREGSTATE
-    PROXY_COMPARE_AND_DISPLAY(regs_fp, regs_name_fp)
+    PROXY_COMPARE_AND_DISPLAY(regs_fp, regs_name_fp, uint64_t)
 #endif // CONFIG_DIFFTEST_ARCHFPREGSTATE
-    PROXY_COMPARE_AND_DISPLAY(csr, regs_name_csr)
+    PROXY_COMPARE_AND_DISPLAY(csr, regs_name_csr, uint64_t)
 #ifdef CONFIG_DIFFTEST_HCSRSTATE
-    PROXY_COMPARE_AND_DISPLAY(hcsr, regs_name_hcsr)
+    PROXY_COMPARE_AND_DISPLAY(hcsr, regs_name_hcsr, uint64_t)
 #endif // CONFIG_DIFFTEST_HCSRSTATE
 #ifdef CONFIG_DIFFTEST_ARCHVECREGSTATE
-    PROXY_COMPARE_AND_DISPLAY(regs_vec, regs_name_vec)
+    PROXY_COMPARE_AND_DISPLAY(regs_vec, regs_name_vec, uint64_t)
 #endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
 #ifdef CONFIG_DIFFTEST_VECCSRSTATE
-    PROXY_COMPARE_AND_DISPLAY(vcsr, regs_name_vec_csr)
+    PROXY_COMPARE_AND_DISPLAY(vcsr, regs_name_vec_csr, uint64_t)
 #endif // CONFIG_DIFFTEST_VECCSRSTATE
 #ifdef CONFIG_DIFFTEST_FPCSRSTATE
-    PROXY_COMPARE_AND_DISPLAY(fcsr, regs_name_fp_csr)
+    PROXY_COMPARE_AND_DISPLAY(fcsr, regs_name_fp_csr, uint64_t)
 #endif // CONFIG_DIFFTEST_FPCSRSTATE
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
-    PROXY_COMPARE_AND_DISPLAY(triggercsr, regs_name_triggercsr)
+    PROXY_COMPARE_AND_DISPLAY(triggercsr, regs_name_triggercsr, uint64_t)
 #endif // CONFIG_DIFFTEST_TRIGGERCSRSTATE
+    PROXY_COMPARE_AND_DISPLAY(regs_dift, regs_name_dift, uint8_t)
   } else {
     ref_reg_display();
   }

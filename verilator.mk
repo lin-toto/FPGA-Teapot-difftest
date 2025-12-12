@@ -82,7 +82,6 @@ VERILATOR_FLAGS_ALL =               \
   +define+VERILATOR=1               \
   +define+PRINTF_COND=1             \
   +define+RANDOMIZE_REG_INIT        \
-  +define+RANDOMIZE_MEM_INIT        \
   +define+RANDOMIZE_GARBAGE_ASSIGN  \
   +define+RANDOMIZE_DELAY=0         \
   -Wno-STMTDLY -Wno-WIDTH           \
@@ -98,6 +97,8 @@ VERILATOR_FLAGS_ALL =               \
   -LDFLAGS "\$$(PGO_LDFLAGS)"       \
   -o $(VERILATOR_TARGET)            \
   $(VERILATOR_FLAGS)
+
+#   +define+RANDOMIZE_MEM_INIT        \
 
 VERILATOR_MK = $(VERILATOR_BUILD_DIR)/V$(EMU_TOP).mk
 VERILATOR_HEADERS := $(EMU_HEADERS) $(shell find $(VERILATOR_CSRC_DIR) -name "*.h")

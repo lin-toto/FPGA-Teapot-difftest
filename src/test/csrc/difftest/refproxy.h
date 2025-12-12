@@ -29,6 +29,13 @@ static const char *regs_name_int[] = {
   "s8",  "s9",  "s10",  "s11",  "t3",  "t4",  "t5",   "t6"
 };
 
+static const char *regs_name_dift[] = {
+  "dift_$0",  "dift_ra",  "dift_sp",   "dift_gp",   "dift_tp",  "dift_t0",  "dift_t1",   "dift_t2",
+  "dift_s0",  "dift_s1",  "dift_a0",   "dift_a1",   "dift_a2",  "dift_a3",  "dift_a4",   "dift_a5",
+  "dift_a6",  "dift_a7",  "dift_s2",   "dift_s3",   "dift_s4",  "dift_s5",  "dift_s6",   "dift_s7",
+  "dift_s8",  "dift_s9",  "dift_s10",  "dift_s11",  "dift_t3",  "dift_t4",  "dift_t5",   "dift_t6"
+};
+
 static const char *regs_name_csr[] = {
   "mode",
   "mstatus", "sstatus", "mepc",
@@ -207,6 +214,7 @@ public:
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
   DifftestTriggerCSRState triggercsr;
 #endif // CONFIG_DIFFTEST_TRIGGERCSRSTATE
+  DifftestArchDIFTRegState regs_dift;
 
   inline uint64_t *arch_reg(uint8_t src, bool is_fp = false) {
     return
