@@ -45,6 +45,10 @@ static const char *regs_name_csr[] = {
   "mscratch", "sscratch", "mideleg", "medeleg"
 };
 
+static const char *regs_name_minimal_csr[] = {
+  "mode", "mstatus", "satp"
+};
+
 static const char *regs_name_hcsr[] = {
   "v",
   "mtval2", "mtinst", "hstatus", "hideleg", "hedeleg",
@@ -111,7 +115,9 @@ public:
   f(update_config, update_dynamic_config, void, void*)                        \
   f(uarchstatus_sync, difftest_uarchstatus_sync, void, void*)                 \
   f(store_commit, difftest_store_commit, int, uint64_t*, uint64_t*, uint8_t*) \
-  f(raise_intr, difftest_raise_intr, void, uint64_t)
+  f(raise_intr, difftest_raise_intr, void, uint64_t)                          \
+  f(ref_enable_specsim, difftest_enable_specsim, void, uint64_t)              \
+  f(ref_disable_specsim, difftest_disable_specsim, void)                      \
 
 #ifdef ENABLE_RUNHEAD
 #define REF_RUN_AHEAD(f)                                                      \
@@ -188,9 +194,9 @@ private:
 
 class RefProxy : public AbstractRefProxy {
 public:
-  RefProxy(int coreid, size_t ram_size) : AbstractRefProxy(coreid, ram_size, nullptr, nullptr) {}
+  RefProxy(int coreid, size_t ram_size) : coreid(coreid), AbstractRefProxy(coreid, ram_size, nullptr, nullptr) {}
   RefProxy(int coreid, size_t ram_size, const char *env, const char *file_path)
-      : AbstractRefProxy(coreid, ram_size, env, file_path) {}
+      : coreid(coreid), AbstractRefProxy(coreid, ram_size, env, file_path) {}
   ~RefProxy();
 
   DifftestArchIntRegState regs_int;
@@ -236,6 +242,14 @@ public:
   void regcpy(DiffTestState *dut);
   int compare(DiffTestState *dut);
   void display(DiffTestState *dut = nullptr);
+
+  inline void enable_specsim(uint64_t memory_version) {
+    ref_enable_specsim(memory_version);
+  }
+
+  inline void disable_specsim() {
+    ref_disable_specsim();
+  }
 
   inline void skip_one(bool isRVC, bool rfwen, bool fpwen, bool vecwen, uint32_t wdest, uint64_t wdata) {
     bool wen = rfwen | fpwen;
@@ -418,6 +432,7 @@ public:
   }
 
 private:
+  int coreid;
   RefProxyConfig config;
 
   inline void sync_config() {

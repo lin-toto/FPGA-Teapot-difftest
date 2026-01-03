@@ -143,6 +143,18 @@ RefProxy::~RefProxy() {
   }
 }
 
+struct MinimalCSRState {
+  uint64_t privilegeMode;
+  uint64_t mstatus;
+  uint64_t satp;
+
+  bool operator==(const MinimalCSRState& other) {
+    return privilegeMode == other.privilegeMode &&
+        mstatus == other.mstatus &&
+        satp == other.satp;
+  }
+};
+
 void RefProxy::regcpy(DiffTestState *dut) {
   memcpy(&regs_int, dut->regs_int.value, 32 * sizeof(uint64_t));
 #ifdef CONFIG_DIFFTEST_ARCHFPREGSTATE
@@ -172,28 +184,35 @@ void RefProxy::regcpy(DiffTestState *dut) {
 int RefProxy::compare(DiffTestState *dut) {
 #define PROXY_COMPARE(field) memcmp(&(dut->field), &(field), sizeof(field))
 
-  const int results[] = {PROXY_COMPARE(regs_int),
+  int results[] = {PROXY_COMPARE(regs_int),
+                   PROXY_COMPARE(csr),
 #ifdef CONFIG_DIFFTEST_ARCHFPREGSTATE
-                         PROXY_COMPARE(regs_fp),
+                   PROXY_COMPARE(regs_fp),
 #endif // CONFIG_DIFFTEST_ARCHFPREGSTATE
 #ifdef CONFIG_DIFFTEST_ARCHVECREGSTATE
-                         PROXY_COMPARE(regs_vec),
+                   PROXY_COMPARE(regs_vec),
 #endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
 #ifdef CONFIG_DIFFTEST_VECCSRSTATE
-                         PROXY_COMPARE(vcsr),
+                   PROXY_COMPARE(vcsr),
 #endif // CONFIG_DIFFTEST_VECCSRSTATE
 #ifdef CONFIG_DIFFTEST_FPCSRSTATE
-                         PROXY_COMPARE(fcsr),
+                   PROXY_COMPARE(fcsr),
 #endif // CONFIG_DIFFTEST_FPCSRSTATE
 #ifdef CONFIG_DIFFTEST_HCSRSTATE
-                         PROXY_COMPARE(hcsr),
+                   PROXY_COMPARE(hcsr),
 #endif // CONFIG_DIFFTEST_HCSRSTATE
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
-                         PROXY_COMPARE(triggercsr),
+                   PROXY_COMPARE(triggercsr),
 #endif // CONFIG_DIFFTEST_TRIGGERCSRSTATE
-                         PROXY_COMPARE(csr),
-                         PROXY_COMPARE(regs_dift)
+                   PROXY_COMPARE(regs_dift)
   };
+
+  if (coreid != 0) {
+    MinimalCSRState dutCsrState{dut->csr.privilegeMode, dut->csr.mstatus, dut->csr.satp};
+    MinimalCSRState refCsrState{csr.privilegeMode, csr.mstatus, csr.satp};
+    results[1] = !(dutCsrState == refCsrState);
+  }
+
   for (int i = 0; i < sizeof(results) / sizeof(int); i++) {
     if (results[i]) {
       // There may be some waive rules for CSRs
@@ -212,39 +231,53 @@ int RefProxy::compare(DiffTestState *dut) {
 
 void RefProxy::display(DiffTestState *dut) {
   if (dut) {
-#define PROXY_COMPARE_AND_DISPLAY(field, field_names, size)               \
+#define PROXY_COMPARE_AND_DISPLAY_INTERNAL(_ptr_dut, _ptr_ref, field_names, nelems)   \
   do {                                                                    \
-    size *_ptr_dut = (size *)(&((dut)->field));                   \
-    size *_ptr_ref = (size *)(&(field));                          \
-    for (int i = 0; i < sizeof(field) / sizeof(size); i++) {              \
+    for (int i = 0; i < (nelems); i++) {              \
       if (_ptr_dut[i] != _ptr_ref[i]) {                                   \
         Info(                                                             \
-            "%7s different at pc = 0x%010lx, right= 0x%016lx, "           \
-            "wrong = 0x%016lx\n",                                         \
-            field_names[i], dut->commit[0].pc, _ptr_ref[i], _ptr_dut[i]); \
+          "%7s different at pc = 0x%010lx, right= 0x%016lx, "             \
+          "wrong = 0x%016lx\n",                                           \
+          field_names[i], dut->commit[0].pc, _ptr_ref[i], _ptr_dut[i]);   \
       }                                                                   \
     }                                                                     \
+  } while (0);
+
+#define PROXY_COMPARE_AND_DISPLAY(field, field_names, size)               \
+  do {                                                                    \
+    size *_ptr_dut = (size *)(&((dut)->field));                           \
+    size *_ptr_ref = (size *)(&(field));                                  \
+    PROXY_COMPARE_AND_DISPLAY_INTERNAL(_ptr_dut, _ptr_ref, field_names, sizeof(field) / sizeof(size));      \
   } while (0);
 
     PROXY_COMPARE_AND_DISPLAY(regs_int, regs_name_int, uint64_t)
 #ifdef CONFIG_DIFFTEST_ARCHFPREGSTATE
     PROXY_COMPARE_AND_DISPLAY(regs_fp, regs_name_fp, uint64_t)
 #endif // CONFIG_DIFFTEST_ARCHFPREGSTATE
-    PROXY_COMPARE_AND_DISPLAY(csr, regs_name_csr, uint64_t)
+    if (coreid == 0) {
+      PROXY_COMPARE_AND_DISPLAY(csr, regs_name_csr, uint64_t)
+    } else {
+      MinimalCSRState dutCsrState{dut->csr.privilegeMode, dut->csr.mstatus, dut->csr.satp};
+      MinimalCSRState refCsrState{csr.privilegeMode, csr.mstatus, csr.satp};
+      PROXY_COMPARE_AND_DISPLAY_INTERNAL(
+        reinterpret_cast<uint64_t*>(&dutCsrState),
+        reinterpret_cast<uint64_t*>(&refCsrState),
+        regs_name_minimal_csr, 3);
+    }
 #ifdef CONFIG_DIFFTEST_HCSRSTATE
-    PROXY_COMPARE_AND_DISPLAY(hcsr, regs_name_hcsr, uint64_t)
+      PROXY_COMPARE_AND_DISPLAY(hcsr, regs_name_hcsr, uint64_t)
 #endif // CONFIG_DIFFTEST_HCSRSTATE
 #ifdef CONFIG_DIFFTEST_ARCHVECREGSTATE
-    PROXY_COMPARE_AND_DISPLAY(regs_vec, regs_name_vec, uint64_t)
+      PROXY_COMPARE_AND_DISPLAY(regs_vec, regs_name_vec, uint64_t)
 #endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
 #ifdef CONFIG_DIFFTEST_VECCSRSTATE
-    PROXY_COMPARE_AND_DISPLAY(vcsr, regs_name_vec_csr, uint64_t)
+      PROXY_COMPARE_AND_DISPLAY(vcsr, regs_name_vec_csr, uint64_t)
 #endif // CONFIG_DIFFTEST_VECCSRSTATE
 #ifdef CONFIG_DIFFTEST_FPCSRSTATE
-    PROXY_COMPARE_AND_DISPLAY(fcsr, regs_name_fp_csr, uint64_t)
+      PROXY_COMPARE_AND_DISPLAY(fcsr, regs_name_fp_csr, uint64_t)
 #endif // CONFIG_DIFFTEST_FPCSRSTATE
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
-    PROXY_COMPARE_AND_DISPLAY(triggercsr, regs_name_triggercsr, uint64_t)
+      PROXY_COMPARE_AND_DISPLAY(triggercsr, regs_name_triggercsr, uint64_t)
 #endif // CONFIG_DIFFTEST_TRIGGERCSRSTATE
     PROXY_COMPARE_AND_DISPLAY(regs_dift, regs_name_dift, uint8_t)
   } else {

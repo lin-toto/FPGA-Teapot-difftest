@@ -20,7 +20,7 @@ export NOOP_HOME
 
 SIM_TOP    ?= SimTop
 DESIGN_DIR ?= $(NOOP_HOME)
-NUM_CORES  ?= 1
+NUM_CORES  ?= 5
 
 BUILD_DIR  = $(DESIGN_DIR)/build
 

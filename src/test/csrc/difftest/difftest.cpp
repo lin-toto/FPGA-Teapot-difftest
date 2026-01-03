@@ -307,13 +307,34 @@ int Difftest::step() {
 #endif // CONFIG_DIFFTEST_REPLAY
 }
 
+void Difftest::do_dryrun_state_update() {
+#ifdef CONFIG_DIFFTEST_DRYRUNSTATEEVENT
+  if (!is_main_core()) {
+    if (dut->dryrun_state.valid && is_dryrun != dut->dryrun_state.state) {
+      is_dryrun = dut->dryrun_state.state;
+      if (is_dryrun) {
+        proxy->enable_specsim(dut->dryrun_state.memoryVersion);
+        update_last_commit();
+        //proxy->regcpy(dut);
+      } else {
+        has_commit = 0;
+        proxy->disable_specsim();
+      }
+    }
+  }
+#endif
+}
+
 inline int Difftest::check_all() {
   progress = false;
 
-  if (check_timeout()) {
-    return 1;
+  if (is_main_core() || is_dryrun) {
+    if (check_timeout()) return 1;
   }
-  do_first_instr_commit();
+
+  do_dryrun_state_update();
+
+  bool is_first = do_first_instr_commit();
 
   // Each cycle is checked for an store event, and recorded in queue.
   // It is checked every time an instruction is committed and queue has content.
@@ -405,19 +426,22 @@ inline int Difftest::check_all() {
     }
   }
 
+  apply_writeback();
+
   {
 #if !defined(BASIC_DIFFTEST_ONLY) && !defined(CONFIG_DIFFTEST_SQUASH)
     if (dut->commit[0].valid) {
       dut_commit_first_pc = dut->commit[0].pc;
       ref_commit_first_pc = proxy->pc;
       if (dut_commit_first_pc != ref_commit_first_pc) {
+        Info("PC mismatch: dut=0x%llx, ref=0x%llx\n", dut_commit_first_pc, ref_commit_first_pc);
         pc_mismatch = true;
       }
     }
 #endif
     for (int i = 0; i < CONFIG_DIFF_COMMIT_WIDTH; i++) {
       if (dut->commit[i].valid) {
-        if (do_instr_commit(i)) {
+        if (do_instr_commit(i, false)) {
           return 1;
         }
 #ifndef CONFIG_DIFFTEST_SQUASH
@@ -539,7 +563,7 @@ void Difftest::do_exception() {
   progress = true;
 }
 
-int Difftest::do_instr_commit(int i) {
+int Difftest::do_instr_commit(int i, bool no_proxy_exec) {
 
   // store the writeback info to debug array
 #ifdef BASIC_DIFFTEST_ONLY
@@ -598,6 +622,8 @@ int Difftest::do_instr_commit(int i) {
   }
 #endif
 
+  if (no_proxy_exec) return 0;
+
   // MMIO accessing should not be a branch or jump, just +2/+4 to get the next pc
   // to skip the checking of an instruction, just copy the reg state to reference design
   if (dut->commit[i].skip || (DEBUG_MODE_SKIP(dut->commit[i].valid, dut->commit[i].pc, dut->commit[i].inst))) {
@@ -623,30 +649,43 @@ int Difftest::do_instr_commit(int i) {
   return 0;
 }
 
-void Difftest::do_first_instr_commit() {
+bool Difftest::do_first_instr_commit() {
   if (!has_commit && dut->commit[0].valid) {
-    Info("The first instruction of core %d has commited. Difftest enabled. \n", id);
     has_commit = 1;
-    nemu_this_pc = FIRST_INST_ADDRESS;
+    state->flush();
 
-    proxy->flash_init((const uint8_t *)flash_dev.base, flash_dev.img_size, flash_dev.img_path);
-    simMemory->clone_on_demand(
+    // Use a temp variable to store the current pc of dut
+    uint64_t dut_this_pc = dut->commit[0].pc;
+
+    if (is_main_core()) {
+      Info("The first instruction of core %d has commited. Difftest enabled. pc=0x%llx \n", id, dut->commit[0].pc);
+
+      nemu_this_pc = FIRST_INST_ADDRESS;
+
+      proxy->flash_init((const uint8_t *)flash_dev.base, flash_dev.img_size, flash_dev.img_path);
+      simMemory->clone_on_demand(
         [this](uint64_t offset, void *src, size_t n) {
           uint64_t dest_addr = PMEM_BASE + offset;
           proxy->mem_init(dest_addr, src, n, DUT_TO_REF);
         },
         true);
-    // Use a temp variable to store the current pc of dut
-    uint64_t dut_this_pc = dut->commit[0].pc;
-    // NEMU should always start at FIRST_INST_ADDRESS
-    dut->commit[0].pc = FIRST_INST_ADDRESS;
+
+      // NEMU should always start at FIRST_INST_ADDRESS
+      dut->commit[0].pc = FIRST_INST_ADDRESS;
+    }
+
     proxy->regcpy(dut);
-    dut->commit[0].pc = dut_this_pc;
+
+    if (is_main_core()) {
+      dut->commit[0].pc = dut_this_pc;
+    }
     // Do not reconfig simulator 'proxy->update_config(&nemu_config)' here:
     // If this is main sim thread, simulator has its own initial config
     // If this process is checkpoint wakeuped, simulator's config has already been updated,
     // do not override it.
-  }
+
+    return true;
+  } else return false;
 }
 
 #if defined(CONFIG_DIFFTEST_LOADEVENT) && defined(CONFIG_DIFFTEST_ARCHVECREGSTATE)
@@ -1511,6 +1550,23 @@ int Difftest::check_timeout() {
   }
 
   return 0;
+}
+
+void Difftest::apply_writeback() {
+  for (int i = 0; i < CONFIG_DIFF_COMMIT_WIDTH; i++) {
+    if (dut->commit[i].valid) {
+      if (dut->commit[i].rfwen) {
+        dut->regs_int.value[dut->commit[i].wdest] = get_int_data(i);
+#ifdef CONFIG_DIFFTEST_ARCHDIFTREGSTATE
+        dut->regs_dift.value[dut->commit[i].wdest] = get_dift_data(i);
+#endif // CONFIG_DIFFTEST_ARCHDIFTREGSTATE
+      }
+#ifdef CONFIG_DIFFTEST_ARCHFPREGSTATE
+      if (dut->commit[i].fpwen)
+        dut->regs_fp.value[dut->commit[i].wdest] = get_fp_data(i);
+#endif // CONFIG_DIFFTEST_ARCHFPREGSTATE
+    }
+  }
 }
 
 int Difftest::update_delayed_writeback() {

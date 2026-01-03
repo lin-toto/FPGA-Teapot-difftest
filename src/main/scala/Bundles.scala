@@ -240,6 +240,11 @@ class FpCSRState extends DifftestBaseBundle {
   val fcsr = UInt(64.W)
 }
 
+class DryRunStateEvent extends DifftestBaseBundle with HasValid {
+  val state = Bool()
+  val memoryVersion = UInt(64.W)
+}
+
 class SbufferEvent extends DifftestBaseBundle with HasValid {
   val addr = UInt(64.W)
   val data = Vec(64, UInt(8.W))

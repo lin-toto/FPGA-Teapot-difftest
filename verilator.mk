@@ -73,7 +73,7 @@ VERILATOR_FLAGS += --coverage-line --coverage-toggle
 endif
 
 # C optimization
-OPT_FAST ?= -O3
+OPT_FAST ?= "\"-O3 -g\""
 
 ########## Verilator Build Recipes ##########
 VERILATOR_FLAGS_ALL =               \
@@ -87,8 +87,8 @@ VERILATOR_FLAGS_ALL =               \
   -Wno-STMTDLY -Wno-WIDTH           \
   --max-num-width 150000            \
   --assert --x-assign unique        \
-  --output-split 30000              \
-  --output-split-cfuncs 30000       \
+  --output-split 10000              \
+  --output-split-cfuncs 10000       \
   -I$(RTL_DIR)                      \
   -I$(GEN_VSRC_DIR)                 \
   -CFLAGS "$(VERILATOR_CXXFLAGS)"   \
@@ -129,7 +129,7 @@ EMU_COMPILE_FILTER =
 verilator-build-emu:
 ifeq ($(REMOTE),localhost)
 	@sync -d $(BUILD_DIR) -d $(VERILATOR_BUILD_DIR)
-	$(TIME_CMD) $(MAKE) -s VM_PARALLEL_BUILDS=1 OPT_SLOW="-O0" \
+	$(TIME_CMD) $(MAKE) -j -s VM_PARALLEL_BUILDS=1 OPT_SLOW="-O0" \
 						OPT_FAST=$(OPT_FAST) \
 						PGO_CFLAGS=$(PGO_CFLAGS) \
 						PGO_LDFLAGS=$(PGO_LDFLAGS) \

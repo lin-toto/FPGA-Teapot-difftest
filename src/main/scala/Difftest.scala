@@ -306,9 +306,9 @@ class DiffTriggerCSRState extends TriggerCSRState with DifftestBundle {
   override val supportsDelta: Boolean = true
 }
 
-class DiffIntWriteback(numRegs: Int = 32) extends DataWriteback(numRegs) with DifftestBundle {
+class DiffIntWriteback(numRegs: Int = 32) extends DataWriteback(numRegs) with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "wb_int"
-  override protected val needFlatten: Boolean = true
+  override protected val needFlatten: Boolean = false
   // It is required for MMIO/Load(only for multi-core) data synchronization, and commit instr trace record
   override def supportsSquashBase: Bool = true.B
   override def classArgs: Map[String, Any] = Map("numRegs" -> numRegs)
@@ -426,6 +426,10 @@ class DiffFpCSRState extends FpCSRState with DifftestBundle {
   override val desiredOffset: Int = 7
   override val updateDependency: Seq[String] = Seq("commit", "event")
   override val supportsDelta: Boolean = true
+}
+
+class DiffDryRunStateEvent extends DryRunStateEvent with DifftestBundle {
+  override val desiredCppName: String = "dryrun_state"
 }
 
 class DiffSbufferEvent extends SbufferEvent with DifftestBundle with DifftestWithIndex {

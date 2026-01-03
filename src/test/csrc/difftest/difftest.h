@@ -197,6 +197,10 @@ public:
     push_back_trace(new InterruptTrace(pc, inst, cause));
   };
   void display(int coreid);
+  void flush() {
+    while (!retire_group_queue.empty()) { retire_group_queue.pop(); }
+    while (!commit_trace.empty()) { commit_trace.pop(); }
+  }
 
 private:
   const bool use_spike;
@@ -240,6 +244,7 @@ public:
   // Trigger a difftest checking procdure
   int step();
   void update_nemuproxy(int, size_t);
+  inline bool is_main_core() { return id == 0; }
   inline bool get_trap_valid() {
     return dut->trap.hasTrap;
   }
@@ -346,6 +351,7 @@ protected:
 
   int id;
 
+  bool is_dryrun = false;
   bool progress = false;
   uint64_t last_commit = 0;
 
@@ -383,10 +389,11 @@ protected:
   }
   int check_timeout();
   int check_all();
-  void do_first_instr_commit();
+  void do_dryrun_state_update();
+  bool do_first_instr_commit();
   void do_interrupt();
   void do_exception();
-  int do_instr_commit(int index);
+  int do_instr_commit(int index, bool no_proxy_exec);
 #if defined(CONFIG_DIFFTEST_LOADEVENT) && defined(CONFIG_DIFFTEST_ARCHVECREGSTATE)
   void do_vec_load_check(int index, DifftestLoadEvent load_event);
 #endif // CONFIG_DIFFTEST_LOADEVENT && CONFIG_DIFFTEST_ARCHVECREGSTATE
@@ -401,9 +408,19 @@ protected:
 #if defined(CONFIG_DIFFTEST_PHYINTREGSTATE)
     return dut->pregs_int.value[dut->commit[i].wpdest];
 #elif defined(CONFIG_DIFFTEST_INTWRITEBACK)
-    return dut->wb_int[dut->commit[i].wpdest].data;
+    return dut->wb_int[i].data;
 #else
     return dut->regs_int.value[dut->commit[i].wdest];
+#endif
+  }
+
+  inline uint64_t get_dift_data(int i) {
+#if defined(CONFIG_DIFFTEST_PHYDIFTREGSTATE)
+    return dut->pregs_dift.value[dut->commit[i].wpdest];
+#elif defined(CONFIG_DIFFTEST_DIFTWRITEBACK)
+    return dut->wb_dift[i].data;
+#else
+    return dut->regs_dift.value[dut->commit[i].wdest];
 #endif
   }
 
@@ -412,7 +429,7 @@ protected:
 #if defined(CONFIG_DIFFTEST_PHYFPREGSTATE)
     return dut->pregs_fp.value[dut->commit[i].wpdest];
 #elif defined(CONFIG_DIFFTEST_FPWRITEBACK)
-    return dut->wb_fp[dut->commit[i].wpdest].data;
+    return dut->wb_fp[i].data;
 #else
     return dut->regs_fp.value[dut->commit[i].wdest];
 #endif
@@ -458,6 +475,7 @@ protected:
 #endif // CONFIG_DIFFTEST_ARCHFPDELAYEDUPDATE
   int update_delayed_writeback();
   int apply_delayed_writeback();
+  void apply_writeback();
 
   void raise_trap(int trapCode);
 #ifdef CONFIG_DIFFTEST_NONREGINTERRUPTPENDINGEVENT
