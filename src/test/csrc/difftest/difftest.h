@@ -467,6 +467,16 @@ protected:
     return was_found;
   }
 
+  inline uint8_t get_commit_dift(int i) {
+    #if defined(CONFIG_DIFFTEST_PHYDIFTREGSTATE)
+        return dut->pregs_dift.value[dut->commit[i].wpdest];
+    #elif defined(CONFIG_DIFFTEST_FPWRITEBACK)
+        return dut->wb_dift[i].data;
+    #else
+        return dut->regs_dift.value[dut->commit[i].wdest];
+    #endif
+  }
+
 #ifdef CONFIG_DIFFTEST_ARCHINTDELAYEDUPDATE
   int delayed_int[32] = {0};
 #endif // CONFIG_DIFFTEST_ARCHINTDELAYEDUPDATE

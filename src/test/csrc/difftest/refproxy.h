@@ -116,6 +116,8 @@ public:
   f(uarchstatus_sync, difftest_uarchstatus_sync, void, void*)                 \
   f(store_commit, difftest_store_commit, int, uint64_t*, uint64_t*, uint8_t*) \
   f(raise_intr, difftest_raise_intr, void, uint64_t)                          \
+  f(ref_increase_instrcnt, difftest_increase_instrcnt, void, uint64_t)        \
+  f(ref_update_instrcnt, difftest_update_instrcnt, void, uint64_t)            \
   f(ref_enable_specsim, difftest_enable_specsim, void, uint64_t)              \
   f(ref_disable_specsim, difftest_disable_specsim, void)                      \
 
@@ -244,6 +246,7 @@ public:
   void display(DiffTestState *dut = nullptr);
 
   inline void enable_specsim(uint64_t memory_version) {
+    ref_update_instrcnt(memory_version);
     ref_enable_specsim(memory_version);
   }
 
@@ -251,7 +254,7 @@ public:
     ref_disable_specsim();
   }
 
-  inline void skip_one(bool isRVC, bool rfwen, bool fpwen, bool vecwen, uint32_t wdest, uint64_t wdata) {
+  inline void skip_one(bool isRVC, bool rfwen, bool fpwen, bool vecwen, uint32_t wdest, uint64_t wdata, uint8_t wdift) {
     bool wen = rfwen | fpwen;
     if (ref_skip_one) {
       ref_skip_one(isRVC, wen, wdest, wdata);
@@ -259,8 +262,10 @@ public:
       sync();
       pc += isRVC ? 2 : 4;
 
-      if (rfwen)
+      if (rfwen) {
         regs_int.value[wdest] = wdata;
+        regs_dift.value[wdest] = wdift;
+      }
 #ifdef CONFIG_DIFFTEST_ARCHFPREGSTATE
       if (fpwen)
         regs_fp.value[wdest] = wdata;
@@ -272,6 +277,7 @@ public:
 #endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
 
       sync(true);
+      ref_increase_instrcnt(1); // fused is not supported
     }
   }
 
